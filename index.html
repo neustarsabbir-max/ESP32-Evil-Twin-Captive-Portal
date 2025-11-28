@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Pentest Portal | Sabbir</title>
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --text-color: #c9d1d9;
+            --accent-color: #2ea043; /* Green */
+            --danger-color: #da3633; /* Red */
+            --card-bg: #161b22;
+        }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            color: var(--accent-color);
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 10px;
+            margin-top: 50px;
+        }
+        .status-badge {
+            background-color: var(--card-bg);
+            border: 1px solid var(--text-color);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin-bottom: 30px;
+            display: inline-block;
+        }
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .btn {
+            background-color: var(--accent-color);
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 20px;
+            transition: 0.3s;
+        }
+        .btn:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .feature-item {
+            background: #21262d;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 3px solid var(--accent-color);
+        }
+        footer {
+            margin-top: 50px;
+            font-size: 0.8rem;
+            color: #8b949e;
+        }
+        @media (max-width: 600px) {
+            .features-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>ESP32 EVIL TWIN PORTAL</h1>
+        <div class="status-badge">Version: v1.0 | Status: Active</div>
+
+        <div class="card" style="border-left: 5px solid var(--danger-color);">
+            <h3 style="color: var(--danger-color); margin-top: 0;">⚠️ DISCLAIMER</h3>
+            <p>This project is developed for <strong>Educational Purposes</strong> and <strong>Security Research</strong> only. It is designed to demonstrate vulnerabilities in WiFi networks using the ESP32 platform. The author is not responsible for any misuse.</p>
+        </div>
+
+        <div class="card">
+            <h2>About The Project</h2>
+            <p>
+                A sophisticated WiFi Penetration Testing firmware for the ESP32. This tool creates a clone (Evil Twin) of a target network and launches a captive portal to test user security awareness.
+            </p>
+            
+            <h3>⚡ Key Features</h3>
+            <div class="features-grid">
+                <div class="feature-item">📡 Automated Network Scanning</div>
+                <div class="feature-item">🎣 Captive Portal (DNS Hijacking)</div>
+                <div class="feature-item">💾 SPIFFS Credential Logging</div>
+                <div class="feature-item">📱 Mobile-First Admin UI</div>
+                <div class="feature-item">🌍 Global Channel Support (1-13)</div>
+                <div class="feature-item">🛠️ Custom HTML Upload</div>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="https://github.com/neustarsabbir-max/ESP32-Evil-Twin-Captive-Portal" class="btn">
+                    VIEW SOURCE CODE ON GITHUB
+                </a>
+            </div>
+        </div>
+
+        <footer>
+            Developed by <strong>Sabbir</strong> | Department of EEE, Southeast University (Batch 43)
+        </footer>
+    </div>
+
+</body>
+</html>
